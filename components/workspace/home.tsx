@@ -55,8 +55,10 @@ import {
 } from "@/lib/local-backup";
 import {
   copyPatternPng,
+  downloadMobilePreviewPng,
   downloadPatternPng,
-  renderPattern,
+  renderMobilePreviewPng,
+  renderPatternPreview,
 } from "@/lib/pattern";
 import {
   deleteProject,
@@ -129,7 +131,7 @@ export function Home({
     [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set()),
     [batchDeleteOpen, setBatchDeleteOpen] = useState(false),
     [batchDeleting, setBatchDeleting] = useState(false),
-    [preview, setPreview] = useState<{ project: Project; src: string } | null>(null),
+    [preview, setPreview] = useState<{ project: Project; src: string; mobileSrc: string } | null>(null),
     [pending, setPending] = useState<{
       action: "rename" | "delete";
       project: Project;
@@ -725,7 +727,8 @@ export function Home({
                                         aria-label="预览"
                                         onClick={() => setPreview({
                                           project,
-                                          src: renderPattern(project.pattern).toDataURL("image/png"),
+                                          src: renderPatternPreview(project.pattern).toDataURL("image/png"),
+                                          mobileSrc: renderMobilePreviewPng(project.pattern).toDataURL("image/png"),
                                         })}
                                       >
                                         <Eye />
@@ -830,10 +833,16 @@ export function Home({
       {preview && (
         <PatternPreviewDialog
           src={preview.src}
+          mobileSrc={preview.mobileSrc}
           name={preview.project.name}
           onClose={() => setPreview(null)}
           onCopy={() => copyPreview(preview.project)}
           onDownload={() => void downloadPatternPng(preview.project.pattern)}
+          onDownloadMobile={() => {
+            void downloadMobilePreviewPng(preview.project.pattern).catch(error =>
+              setMessage(error instanceof Error ? error.message : "手机预览图下载失败。"),
+            );
+          }}
         />
       )}
       <AlertDialog

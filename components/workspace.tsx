@@ -27,6 +27,8 @@ import {
   type AiStyleFailure,
   generatePixelStyle,
 } from "@/lib/ai";
+import { generatePattern } from "@/lib/generate-pattern";
+import { getGpuHealth, type GpuHealth } from "@/lib/gpu-client";
 import {
   localBackupStatus,
   type LocalBackupStatus,
@@ -34,7 +36,6 @@ import {
   syncBackup,
 } from "@/lib/local-backup";
 import {
-  imageToPattern,
   prepareImageFile,
   removeBackground,
   renderGenerationSource,
@@ -115,6 +116,7 @@ export function Workspace({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [current, setCurrent] = useState<Project | null>(null);
   const [busy, setBusy] = useState(false);
+  const [gpuHealth, setGpuHealth] = useState<GpuHealth | null>(null);
   const [message, setMessage] = useState("");
   const [preferredMode, setPreferredMode] = useState(savedGenerationMode);
   const [aiProvider, setAiProvider] = useState<AiProvider>("cloudflare");
@@ -145,6 +147,17 @@ export function Workspace({
   async function refresh() {
     setProjects(await listProjects());
     setProjectsReady(true);
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getGpuHealth(controller.signal).then(setGpuHealth).catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  async function refreshGpuHealth() {
+    setGpuHealth(null);
+    setGpuHealth(await getGpuHealth());
   }
 
   useEffect(() => {
@@ -420,7 +433,7 @@ export function Workspace({
             setMessage,
           ));
       setMessage("正在整理颜色和图案轮廓…");
-      const pattern = await imageToPattern(
+      const pattern = await generatePattern(
         processed,
         draft.file.name,
         settings,
@@ -640,6 +653,8 @@ export function Workspace({
       {stage === "result" && current && (
         <Result
           key={current.id}
+          gpuHealth={gpuHealth}
+          onRefreshGpu={() => void refreshGpuHealth()}
           onChange={project => void updateCurrent(project)}
           onDelete={deleteCurrent}
           onPendingChange={setPendingState}
@@ -658,6 +673,11 @@ export function Workspace({
               {draft && (
                 <Prepare
                   aiProvider={aiProvider}
+                  gpuHealth={gpuHealth}
+                  onRefreshGpu={() => void refreshGpuHealth()}
+                  onEngineChange={engine => setDraft(value => value
+                    ? { ...value, settings: { ...value.settings, engine } }
+                    : value)}
                   candidates={aiCandidates}
                   busy={busy}
                   draft={draft}

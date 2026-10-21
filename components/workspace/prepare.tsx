@@ -31,8 +31,10 @@ import type {
   AiStyleCandidate,
   AiStyleFailure,
 } from "@/lib/ai";
-import type { GenerationSettings, SourceTransform } from "@/lib/types";
+import type { GpuHealth } from "@/lib/gpu-client";
+import type { GenerationSettings, QuantizationEngine, SourceTransform } from "@/lib/types";
 import { AiSettingsDialog } from "@/components/ai-settings-dialog";
+import { GpuEngineControl } from "@/components/gpu-engine-control";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -402,6 +404,9 @@ function VariantCard({
 
 export function Prepare({
   draft,
+  gpuHealth,
+  onRefreshGpu,
+  onEngineChange,
   setDraft,
   onFile,
   onGenerate,
@@ -425,6 +430,9 @@ export function Prepare({
   sampleTotal,
 }: {
   draft: Draft;
+  gpuHealth: GpuHealth | null;
+  onRefreshGpu: () => void;
+  onEngineChange: (engine: QuantizationEngine) => void;
   setDraft: (draft: Draft) => void;
   onFile: (file?: File) => void;
   onGenerate: (request?: AiRequest) => void;
@@ -477,12 +485,14 @@ export function Prepare({
     onModeChange(mode);
   }
   function runAi(action: (request: AiRequest) => void) {
-    const credential = aiProvider === "cloudflare"
-      ? Date.now() - turnstileTime.current < 290_000
-        ? turnstileToken
-        : ""
-      : (aiProvider === "gemini" ? geminiKey : openaiKey).trim();
-    if (!credential) return setAiSettingsOpen(true);
+    const credential = aiProvider === "dsh"
+      ? ""
+      : aiProvider === "cloudflare"
+        ? Date.now() - turnstileTime.current < 290_000
+          ? turnstileToken
+          : ""
+        : (aiProvider === "gemini" ? geminiKey : openaiKey).trim();
+    if (!credential && aiProvider !== "dsh") return setAiSettingsOpen(true);
     action({ provider: aiProvider, credential });
     if (aiProvider === "cloudflare") {
       setTurnstileToken("");
@@ -694,6 +704,19 @@ export function Prepare({
                 </div>
               </fieldset>
             </div>
+            <GpuEngineControl
+              engine={settings.engine}
+              health={gpuHealth}
+              processingMode={settings.processingMode}
+              gpuSampling={settings.gpuSampling}
+              disabled={busy}
+              onChange={onEngineChange}
+              onSamplingChange={gpuSampling => setDraft({
+                ...draft,
+                settings: { ...settings, gpuSampling },
+              })}
+              onRefresh={onRefreshGpu}
+            />
             <div className="grid grid-cols-2 gap-2 border-t border-border pt-2.5 [&_button]:w-full max-[640px]:gap-1.5 max-[640px]:[&_button]:px-2 max-[640px]:[&_button]:text-xs">
               <Button
                 variant="outline"
@@ -750,6 +773,19 @@ export function Prepare({
             )}
           </div>
           <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
+            <GpuEngineControl
+              engine={settings.engine}
+              health={gpuHealth}
+              processingMode={settings.processingMode}
+              gpuSampling={settings.gpuSampling}
+              disabled={busy}
+              onChange={onEngineChange}
+              onSamplingChange={gpuSampling => setDraft({
+                ...draft,
+                settings: { ...settings, gpuSampling },
+              })}
+              onRefresh={onRefreshGpu}
+            />
             <VariantCard
               candidate={candidates[0]}
               failure={failures[0]}

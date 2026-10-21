@@ -1,0 +1,5 @@
+cupy-cuda12x[ctk]==14.2.0
+fastapi==0.135.1
+uvicorn==0.42.0
+numpy==2.4.3
+httpx==0.28.1

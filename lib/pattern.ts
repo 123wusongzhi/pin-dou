@@ -132,7 +132,7 @@ function selectedCanvas(
   return canvas;
 }
 
-function transformedCanvas(
+export function transformedCanvas(
   image: HTMLImageElement,
   transform: SourceTransform,
 ) {
@@ -318,7 +318,7 @@ function choosePalette(
   return selected.map(point => point.color);
 }
 
-function cleanSmallRegions(
+export function cleanSmallRegions(
   cells: Array<string | null>,
   width: number,
   maxSize = 2,
@@ -363,7 +363,7 @@ function cleanSmallRegions(
   return result;
 }
 
-function mergeSimilarColors(cells: Array<string | null>, threshold: number) {
+export function mergeSimilarColors(cells: Array<string | null>, threshold: number) {
   if (threshold <= 0) return cells;
   const counts = new Map<string, number>();
   for (const id of cells) if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
@@ -570,7 +570,7 @@ export function samplePixelTiles(
   return result;
 }
 
-function sampleSource(
+export function sampleSource(
   source: HTMLCanvasElement,
   width: number,
   height: number,
@@ -778,7 +778,7 @@ export function visiblePatternGridMarks(size: number, length: number) {
   }, []);
 }
 
-export function renderPattern(pattern: Pattern, includeLegend = true) {
+export function renderPattern(pattern: Pattern, includeLegend = true, maxDimension?: number) {
   const cellSize = 34,
     pagePadding = 48,
     header = 56,
@@ -792,20 +792,26 @@ export function renderPattern(pattern: Pattern, includeLegend = true) {
     boardHeight = pattern.height * cellSize,
     itemWidth = 112,
     itemHeight = 110;
-  const canvas = document.createElement("canvas");
-  canvas.width = boardWidth + pagePadding * 2;
   const legendColumns = Math.max(
       1,
       Math.floor((boardWidth - 48) / itemWidth),
     ),
     legendRows = Math.ceil(stats.length / legendColumns),
-    legendTop = boardY + boardHeight + 36;
-  canvas.height
-    = includeLegend
+    legendTop = boardY + boardHeight + 36,
+    fullWidth = boardWidth + pagePadding * 2,
+    fullHeight = includeLegend
       ? legendTop + 60 + legendRows * itemHeight + 28
-      : boardY + boardHeight + footerSpace;
+      : boardY + boardHeight + footerSpace,
+    scale = maxDimension
+      ? Math.min(1, maxDimension / Math.max(fullWidth, fullHeight))
+      : 1;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(fullWidth * scale));
+  canvas.height = Math.max(1, Math.round(fullHeight * scale));
   const context = canvas.getContext("2d");
   if (!context) throw new Error("当前浏览器无法导出图片。");
+  if (scale !== 1)
+    context.scale(canvas.width / fullWidth, canvas.height / fullHeight);
   const drawTag = (text: string, x: number, y: number) => {
     context.font = "700 15px sans-serif";
     const width
@@ -821,7 +827,7 @@ export function renderPattern(pattern: Pattern, includeLegend = true) {
     return width;
   };
   context.fillStyle = "#fffaf7";
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillRect(0, 0, fullWidth, fullHeight);
   context.fillStyle = "#182235";
   context.font = "700 26px sans-serif";
   context.textAlign = "left";
@@ -835,7 +841,7 @@ export function renderPattern(pattern: Pattern, includeLegend = true) {
       18,
     );
   drawTag("MARD", boardTagX + boardTagWidth + 8, 18);
-  const brandRight = canvas.width - pagePadding,
+  const brandRight = fullWidth - pagePadding,
     logoX = brandRight - 163;
   context.beginPath();
   context.roundRect(logoX, 18, 32, 32, 7);
@@ -931,6 +937,167 @@ export function renderPattern(pattern: Pattern, includeLegend = true) {
   return canvas;
 }
 
+export function renderPatternPreview(pattern: Pattern, includeLegend = true) {
+  return renderPattern(
+    pattern,
+    includeLegend,
+    window.matchMedia("(max-width: 641px)").matches ? 3072 : undefined,
+  );
+}
+
+export function renderMobilePreviewPng(pattern: Pattern) {
+  const pageWidth = 1080,
+    artworkLimitWidth = 920,
+    artworkLimitHeight = 1400,
+    cellSize = Math.min(
+      artworkLimitWidth / pattern.width,
+      artworkLimitHeight / pattern.height,
+    ),
+    artworkWidth = Math.round(pattern.width * cellSize),
+    artworkHeight = Math.round(pattern.height * cellSize),
+    artworkX = Math.round((pageWidth - artworkWidth) / 2),
+    cardY = 276,
+    cardHeight = Math.max(680, artworkHeight + 88),
+    artworkY = cardY + Math.round((cardHeight - artworkHeight) / 2),
+    stats = patternStats(pattern),
+    total = stats.reduce((sum, item) => sum + item.count, 0),
+    leadingColors = stats.slice(0, 6),
+    legendTop = cardY + cardHeight + 48,
+    legendRows = Math.ceil(leadingColors.length / 2),
+    legendBottom = legendTop + 78 + legendRows * 78 + (stats.length > 6 ? 40 : 0),
+    pageHeight = legendBottom + 112;
+  const canvas = document.createElement("canvas");
+  canvas.width = pageWidth;
+  canvas.height = pageHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("当前浏览器无法导出图片。");
+
+  const rounded = (x: number, y: number, width: number, height: number, radius: number) => {
+    context.beginPath();
+    context.roundRect(x, y, width, height, radius);
+  };
+  context.fillStyle = "#f8f6f2";
+  context.fillRect(0, 0, pageWidth, pageHeight);
+
+  context.fillStyle = "#b61f65";
+  context.font = "700 24px sans-serif";
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+  context.fillText("拼豆图纸生成器  /  作品预览", 72, 72);
+  rounded(826, 92, 182, 60, 30);
+  context.fillStyle = "#fde7f1";
+  context.fill();
+  context.fillStyle = "#b61f65";
+  context.font = "700 29px sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText("预览图", 917, 122);
+
+  context.fillStyle = "#182235";
+  context.font = "700 58px sans-serif";
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+  let title = pattern.name.trim() || "未命名图案";
+  while (title.length > 1 && context.measureText(title).width > 730)
+    title = `${title.slice(0, -2)}…`;
+  context.fillText(title, 72, 153);
+  context.fillStyle = "#667085";
+  context.font = "500 28px sans-serif";
+  context.fillText(
+    `${pattern.width} × ${pattern.height} 格  ·  ${stats.length} 色  ·  ${total.toLocaleString()} 粒`,
+    72,
+    218,
+  );
+
+  rounded(50, cardY, 980, cardHeight, 36);
+  context.fillStyle = "#ffffff";
+  context.fill();
+  context.strokeStyle = "#e9e5df";
+  context.lineWidth = 2;
+  context.stroke();
+  context.fillStyle = "#eeece7";
+  context.fillRect(artworkX, artworkY, artworkWidth, artworkHeight);
+  const drawBeadCircles = cellSize >= 9;
+  pattern.cells.forEach((id, index) => {
+    if (!id) return;
+    const column = index % pattern.width,
+      row = Math.floor(index / pattern.width);
+    context.fillStyle = beadById(id).hex;
+    if (drawBeadCircles) {
+      context.beginPath();
+      context.arc(
+        artworkX + (column + 0.5) * cellSize,
+        artworkY + (row + 0.5) * cellSize,
+        cellSize * 0.46,
+        0,
+        Math.PI * 2,
+      );
+      context.fill();
+    }
+    else {
+      const x = Math.round(artworkX + column * cellSize),
+        y = Math.round(artworkY + row * cellSize);
+      context.fillRect(
+        x,
+        y,
+        Math.round(artworkX + (column + 1) * cellSize) - x,
+        Math.round(artworkY + (row + 1) * cellSize) - y,
+      );
+    }
+  });
+
+  context.fillStyle = "#182235";
+  context.font = "700 35px sans-serif";
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+  context.fillText("主要用色", 72, legendTop + 36);
+  context.fillStyle = "#667085";
+  context.font = "500 24px sans-serif";
+  context.textAlign = "right";
+  context.fillText(
+    stats.length ? `展示用量最多的 ${leadingColors.length} 种` : "暂无颜色",
+    1008,
+    legendTop + 34,
+  );
+  leadingColors.forEach(({ color, count }, index) => {
+    const x = 72 + (index % 2) * 474,
+      y = legendTop + 66 + Math.floor(index / 2) * 78;
+    rounded(x, y, 450, 64, 18);
+    context.fillStyle = "#ffffff";
+    context.fill();
+    rounded(x + 10, y + 10, 44, 44, 12);
+    context.fillStyle = color.hex;
+    context.fill();
+    context.strokeStyle = "#d5d8de";
+    context.lineWidth = 1;
+    context.stroke();
+    context.fillStyle = "#182235";
+    context.font = "700 25px sans-serif";
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+    context.fillText(color.id, x + 72, y + 32);
+    context.fillStyle = "#667085";
+    context.font = "500 23px sans-serif";
+    context.textAlign = "right";
+    context.fillText(`${count.toLocaleString()} 粒`, x + 430, y + 32);
+  });
+  if (stats.length > 6) {
+    context.fillStyle = "#667085";
+    context.font = "500 23px sans-serif";
+    context.textAlign = "left";
+    context.textBaseline = "alphabetic";
+    context.fillText(`其余 ${stats.length - 6} 种颜色请查看施工图`, 72, legendBottom - 10);
+  }
+  context.fillStyle = "#c9c3bc";
+  context.fillRect(72, pageHeight - 88, 936, 1);
+  context.fillStyle = "#667085";
+  context.font = "500 23px sans-serif";
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+  context.fillText("仅供手机预览 · 拼制时请查看施工图", 72, pageHeight - 44);
+  return canvas;
+}
+
 function saveBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob),
     anchor = document.createElement("a");
@@ -943,6 +1110,14 @@ function saveBlob(blob: Blob, fileName: string) {
 export async function downloadPatternPng(pattern: Pattern) {
   const blob = await patternPngBlob(pattern);
   saveBlob(blob, `${pattern.name}-施工图.png`);
+}
+
+export async function downloadMobilePreviewPng(pattern: Pattern) {
+  const blob = await new Promise<Blob | null>(resolve =>
+    renderMobilePreviewPng(pattern).toBlob(resolve, "image/png"),
+  );
+  if (!blob) throw new Error("PNG 生成失败，请重试。");
+  saveBlob(blob, `${pattern.name}-手机预览图.png`);
 }
 
 export async function patternPngBlob(pattern: Pattern) {

@@ -16,3 +16,6 @@ output/
 outputs/
 
 tsconfig.tsbuildinfo
+services/gpu/.venv/
+services/gpu/.runtime/
+services/gpu/**/__pycache__/

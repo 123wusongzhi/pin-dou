@@ -41,12 +41,14 @@ import {
   TransformComponent,
   TransformWrapper,
 } from "react-zoom-pan-pinch";
+import type { GpuHealth } from "@/lib/gpu-client";
 import type {
   BeadColor,
   GenerationSettings,
   Pattern,
   Project,
 } from "@/lib/types";
+import { GpuEngineControl } from "@/components/gpu-engine-control";
 import {
   PatternCanvas,
   PatternGridAxis,
@@ -77,14 +79,17 @@ import {
   replaceConnectedRegion,
   setCell,
 } from "@/lib/editor";
+import { generatePattern } from "@/lib/generate-pattern";
 import {
   copyPatternPng,
+  downloadMobilePreviewPng,
   downloadPatternPng,
   imageToPattern,
   readBlobAsDataUrl,
   removeBackground,
   renderGenerationSource,
-  renderPattern,
+  renderMobilePreviewPng,
+  renderPatternPreview,
   sharePatternPng,
 } from "@/lib/pattern";
 import { saveProject } from "@/lib/projects";
@@ -313,13 +318,15 @@ async function generatedProjectPattern(
   }
   return {
     originalUrl,
-    pattern: await imageToPattern(
-      sourceUrl,
-      project.sourceName,
-      project.settings,
-      transform,
-      project.settings.background === "keep" ? undefined : originalUrl,
-    ),
+    pattern: project.pattern.generatedCells
+      ? { ...project.pattern, cells: project.pattern.generatedCells }
+      : await imageToPattern(
+          sourceUrl,
+          project.sourceName,
+          project.settings,
+          transform,
+          project.settings.background === "keep" ? undefined : originalUrl,
+        ),
     processedSource,
     transform,
   };
@@ -538,18 +545,26 @@ function ToolColorProperties({
 
 export function Result({
   project,
+  gpuHealth,
+  onRefreshGpu,
   onChange,
   onDelete,
   onPendingChange,
 }: {
   project: Project;
+  gpuHealth: GpuHealth | null;
+  onRefreshGpu: () => void;
   onChange: (project: Project) => void;
   onDelete: () => Promise<void>;
   onPendingChange: (pending: boolean) => void;
 }) {
   const isBlankCard = !project.pattern.contentBounds;
   const [pattern, setPattern] = useState(project.pattern);
-  const [hasManualEdits, setHasManualEdits] = useState(false);
+  const [hasManualEdits, setHasManualEdits] = useState(() =>
+    project.pattern.generatedCells
+      ? findCellEdits(project.pattern.cells, project.pattern.generatedCells).length > 0
+      : false,
+  );
   const [tool, setTool] = useState<WorkbenchTool>("hand");
   const [selected, setSelected] = useState(
     patternStats(project.pattern)[0]?.color.id || "H7",
@@ -574,7 +589,7 @@ export function Result({
     ...project.settings,
     excludedColorIds: [...project.settings.excludedColorIds],
   });
-  const [preview, setPreview] = useState<string | null>(null),
+  const [preview, setPreview] = useState<{ src: string; mobileSrc: string } | null>(null),
     [notice, setNoticeText] = useState("已保存"),
     [noticeTone, setNoticeTone] = useState<NoticeTone>("success");
   const [comparison, setComparison] = useState<{
@@ -639,6 +654,7 @@ export function Result({
   );
   useEffect(() => {
     if (!projectRef.current.pattern.contentBounds) return;
+    if (projectRef.current.pattern.generatedCells) return;
     let cancelled = false;
     void generatedProjectPattern(projectRef.current)
       .then(({ pattern: generated }) => {
@@ -959,7 +975,7 @@ export function Result({
           );
         }
       }
-      const generatedPattern = await imageToPattern(
+      const generatedPattern = await generatePattern(
         sourceUrl,
         current.sourceName,
         settings,
@@ -1091,7 +1107,7 @@ export function Result({
               await readBlobAsDataUrl(projectRef.current.source),
               projectRef.current.transform,
             ),
-        current: renderPattern(patternRef.current, false).toDataURL("image/png"),
+        current: renderPatternPreview(patternRef.current, false).toDataURL("image/png"),
       });
     }
     catch (error) {
@@ -1374,10 +1390,10 @@ export function Result({
               variant="outline"
               size="sm"
               aria-label="预览并下载图纸"
-              onClick={() =>
-                setPreview(
-                  renderPattern(patternRef.current).toDataURL("image/png"),
-                )}
+              onClick={() => setPreview({
+                src: renderPatternPreview(patternRef.current).toDataURL("image/png"),
+                mobileSrc: renderMobilePreviewPng(patternRef.current).toDataURL("image/png"),
+              })}
             >
               <Download />
               <span>下载</span>
@@ -1593,6 +1609,39 @@ export function Result({
                 </div>
                 {!isBlankCard && (
                   <>
+                    <GpuEngineControl
+                      engine={draftSettings.engine}
+                      health={gpuHealth}
+                      processingMode={draftSettings.processingMode}
+                      gpuSampling={draftSettings.gpuSampling}
+                      disabled={busy}
+                      onChange={engine => scheduleAdjustments({
+                        ...draftSettingsRef.current,
+                        engine,
+                      })}
+                      onSamplingChange={gpuSampling => scheduleAdjustments({
+                        ...draftSettingsRef.current,
+                        gpuSampling,
+                      })}
+                      onRefresh={onRefreshGpu}
+                    />
+                    <p className="m-0 text-xs leading-relaxed text-muted-foreground">
+                      当前图纸：
+                      {project.settings.engine === "gpu" ? "电脑GPU高质量" : "浏览器标准"}
+                      {project.pattern.generationInfo?.device
+                        ? ` · ${project.pattern.generationInfo.device}`
+                        : ""}
+                    </p>
+                    {project.settings.engine === "gpu" && project.settings.processingMode === "edge"
+                      ? (
+                          <p className="m-0 text-xs leading-relaxed text-muted-foreground">
+                            当前采样：
+                            {project.pattern.generationInfo?.sampling === "natural-v1"
+                              ? "自然平衡"
+                              : "原细节增强"}
+                          </p>
+                        )
+                      : null}
                     <div className="panel-switches">
                       <div className="panel-switch-row">
                         <strong>去除纯色背景</strong>
@@ -1839,11 +1888,17 @@ export function Result({
 
       {preview && (
         <PatternPreviewDialog
-          src={preview}
+          src={preview.src}
+          mobileSrc={preview.mobileSrc}
           name={pattern.name}
           onClose={() => setPreview(null)}
           onCopy={copy}
           onDownload={() => void downloadPatternPng(patternRef.current)}
+          onDownloadMobile={() => {
+            void downloadMobilePreviewPng(patternRef.current).catch(error =>
+              setNotice(error instanceof Error ? error.message : "手机预览图下载失败。"),
+            );
+          }}
         />
       )}
       {comparison && (

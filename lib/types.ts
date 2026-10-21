@@ -9,6 +9,8 @@ export type BeadColor = {
 export type ProcessingMode = "edge" | "dominant" | "average";
 export type BackgroundMode = "plain" | "keep";
 export type GenerationMode = "local" | "ai";
+export type QuantizationEngine = "local" | "gpu";
+export type GpuSamplingProfile = "detail" | "natural";
 export type SourceVariant
   = | "original"
     | "ai-pixel"
@@ -53,6 +55,8 @@ export type GenerationSettings = {
   background: BackgroundMode;
   mirror: boolean;
   mode: GenerationMode;
+  engine?: QuantizationEngine;
+  gpuSampling?: GpuSamplingProfile;
 };
 
 export type Pattern = {
@@ -61,6 +65,14 @@ export type Pattern = {
   width: number;
   height: number;
   cells: Array<string | null>;
+  generatedCells?: Array<string | null>;
+  generationInfo?: {
+    engine: QuantizationEngine;
+    device?: string;
+    algorithm?: string;
+    sampling?: "detail-v1" | "natural-v1" | "dominant-v1" | "average-v1";
+    durationMs?: number;
+  };
   backgroundCells?: Array<string | null>;
   createdAt: string;
   sourcePreview?: string;

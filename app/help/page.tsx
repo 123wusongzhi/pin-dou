@@ -50,7 +50,7 @@ const steps = [
 const questions = [
   [
     "没有 AI 密钥也能用吗？",
-    "可以。AI 处理默认可使用 Cloudflare；也可以在设置中选择 GPT Image 或 Gemini，并填写自己的 API Key。",
+    "可以。AI 处理可使用本机 DSH 订阅通道或 Cloudflare；也可以选择 GPT Image 或 Gemini，并填写自己的 API Key。",
   ],
   [
     "图片和密钥会保存吗？",

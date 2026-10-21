@@ -5,9 +5,11 @@ import { createSamplePattern } from "../lib/beads";
 import {
   copyPatternPng,
   cropAreaPixels,
+  downloadMobilePreviewPng,
   downloadPatternPng,
   needsLightBeadOutline,
   patternGridMarks,
+  renderMobilePreviewPng,
   renderPattern,
   sharePatternPng,
   visiblePatternGridMarks,
@@ -277,6 +279,89 @@ describe("图纸 PNG 导出", () => {
     );
     expect(await sharePatternPng(createSamplePattern())).toBe("shared");
     expect(share).toHaveBeenCalledOnce();
+  });
+});
+
+describe("手机预览图 PNG 导出", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function mockCanvasContext() {
+    const fillText = vi.fn(),
+      moveTo = vi.fn(),
+      lineTo = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      fillStyle: "",
+      strokeStyle: "",
+      lineWidth: 1,
+      font: "",
+      textAlign: "left",
+      textBaseline: "alphabetic",
+      fillRect: vi.fn(),
+      fillText,
+      measureText: vi.fn((text: string) => ({ width: text.length * 30 })),
+      beginPath: vi.fn(),
+      roundRect: vi.fn(),
+      moveTo,
+      lineTo,
+      stroke: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+    return { fillText, moveTo, lineTo };
+  }
+
+  it("最大方形与长条图案均生成尺寸受限的手机纵向画布", () => {
+    mockCanvasContext();
+    for (const [width, height] of [[192, 192], [192, 16], [16, 192]]) {
+      const canvas = renderMobilePreviewPng({
+        ...createSamplePattern(),
+        width,
+        height,
+        cells: Array(width * height).fill(null),
+      });
+      expect(canvas.width).toBe(1080);
+      expect(canvas.height).toBeGreaterThan(canvas.width);
+      expect(canvas.height).toBeLessThanOrEqual(2300);
+    }
+  });
+
+  it("画面无施工格线、无格内色号，标明预览图并列出主要用色", () => {
+    const { fillText, moveTo, lineTo } = mockCanvasContext();
+    renderMobilePreviewPng({
+      ...createSamplePattern(),
+      width: 16,
+      height: 16,
+      cells: Array(16 * 16).fill("A1"),
+    });
+    const labels = fillText.mock.calls.map(([label]) => label);
+    expect(labels).toContain("预览图");
+    expect(labels).toContain("主要用色");
+    expect(labels.filter(label => label === "A1")).toHaveLength(1);
+    expect(moveTo).not.toHaveBeenCalled();
+    expect(lineTo).not.toHaveBeenCalled();
+  });
+
+  it("以手机预览图文件名下载 PNG", async () => {
+    mockCanvasContext();
+    let downloadedName = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadedName = this.download;
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:test"),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(
+      callback => callback(new Blob(["png"], { type: "image/png" })),
+    );
+    await downloadMobilePreviewPng({
+      ...createSamplePattern(),
+      cells: Array(52 * 52).fill(null),
+    });
+    expect(downloadedName).toBe("糖糖猫-手机预览图.png");
   });
 });
 

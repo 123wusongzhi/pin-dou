@@ -175,6 +175,8 @@ const SettingsSchema = z.object({
   background: z.enum(["plain", "fast", "precise", "keep"]),
   mirror: z.boolean().optional(),
   mode: z.enum(["local", "ai"]),
+  engine: z.enum(["local", "gpu"]).optional(),
+  gpuSampling: z.enum(["detail", "natural"]).optional(),
 });
 const TransformSchema = z.object({
   rotation: z.union([
@@ -207,7 +209,15 @@ const CompactSnapshotSchema = z.object({
   w: z.number().int().min(1).max(192),
   h: z.number().int().min(1).max(192),
   c: PackedCellsSchema,
+  g: PackedCellsSchema.optional(),
   b: PackedCellsSchema.optional(),
+  generationInfo: z.object({
+    engine: z.enum(["local", "gpu"]),
+    device: z.string().max(160).optional(),
+    algorithm: z.string().max(120).optional(),
+    sampling: z.enum(["detail-v1", "natural-v1", "dominant-v1", "average-v1"]).optional(),
+    durationMs: z.number().finite().nonnegative().optional(),
+  }).optional(),
   o: z
     .object({
       x: z.number(),
@@ -295,6 +305,8 @@ function compactSnapshot(pattern: Pattern): CompactSnapshot {
     w: pattern.width,
     h: pattern.height,
     c: packCells(pattern.cells),
+    g: pattern.generatedCells ? packCells(pattern.generatedCells) : undefined,
+    generationInfo: pattern.generationInfo,
     b: pattern.backgroundCells
       ? packCells(pattern.backgroundCells)
       : undefined,
@@ -312,6 +324,8 @@ function expandSnapshot(
     width: snapshot.w,
     height: snapshot.h,
     cells: unpackCells(snapshot.c, count),
+    generatedCells: snapshot.g ? unpackCells(snapshot.g, count) : undefined,
+    generationInfo: snapshot.generationInfo,
     backgroundCells: snapshot.b
       ? unpackCells(snapshot.b, count)
       : undefined,
